@@ -13,7 +13,12 @@ description = "Cluster CA certificate"
 value       = module.eks.cluster_certificate_authority_data
 }
 
-output "node_group_name" {
-  description = "EKS Managed Node Group Name"
-  value       = module.eks_managed_node_group.node_groups[0].name
+output "managed_node_group_name" {
+description = "EKS Managed Node Group Name"
+value = keys(module.eks.managed_node_groups)[0]
+}
+
+output "managed_node_group_arn" {
+description = "EKS Managed Node Group ARN"
+value = values(module.eks.managed_node_groups)[0]
 }
