@@ -9,16 +9,16 @@ output "cluster_endpoint" {
 }
 
 output "cluster_ca_certificate" {
-  description = "Cluster CA Certificate"
+  description = "Cluster CA certificate"
   value       = module.eks.cluster_certificate_authority_data
 }
 
 output "managed_node_group_name" {
   description = "EKS Managed Node Group Name"
-  value       = keys(module.eks.managed_node_groups)[0]
+  value       = module.eks_managed_node_group.node_group_names[0]
 }
 
 output "managed_node_group_arn" {
   description = "EKS Managed Node Group ARN"
-  value       = module.eks.managed_node_groups_arns["eks-managed-ng"]
+  value       = module.eks_managed_node_group.node_group_arns[0]
 }
