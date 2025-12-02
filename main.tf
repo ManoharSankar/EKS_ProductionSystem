@@ -132,7 +132,7 @@ iam_role_arn = aws_iam_role.eks_node_role.arn   # <- use iam_role_arn, not node_
 
 subnet_ids = module.vpc.private_subnets
 
-instance_types = ["t3.medium"]
+instance_types = ["t2.medium"]
 
 desired_size = 2
 min_size = 1
