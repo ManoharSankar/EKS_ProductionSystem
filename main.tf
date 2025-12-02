@@ -1,23 +1,57 @@
-# A random suffix for resource names
-resource "random_string" "suffix" {
-  length  = 8
-  special = false
-  upper   = false
-  numeric = true
-}
+module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
 
-# Get 3 Availability Zones for the specified region
-data "aws_availability_zones" "available" {
-  state    = "available"
-  filter {
-    name   = "region-name"
-    values = [var.region]
+  name = "jenkins-vpc"
+  cidr = var.vpc_cidr
+
+  azs = data.aws_availability_zones.azs.names
+
+  private_subnets = var.private_subnets
+  public_subnets  = var.public_subnets
+
+  enable_dns_hostnames = true
+  enable_nat_gateway   = false
+  single_nat_gateway   = false
+
+  tags = {
+    "kubernetes.io/cluster/my-eks-cluster" = "shared"
   }
+
+  public_subnet_tags = {
+    "kubernetes.io/cluster/my-eks-cluster" = "shared"
+    "kubernetes.io/role/elb"               = 1
+  }
+
+  private_subnet_tags = {
+    "kubernetes.io/cluster/my-eks-cluster" = "shared"
+    "kubernetes.io/role/internal-elb"      = 1
+  }
+
 }
 
-# Local variables for centralized name and AZ management
-locals {
-  cluster_name = "${var.cluster_name_prefix}-${random_string.suffix.result}"
-  # Ensure we only use the first 3 AZs for ap-south-1
-  azs          = slice(data.aws_availability_zones.available.names, 0, 3)
+module "eks" {
+  source = "terraform-aws-modules/eks/aws"
+
+  cluster_name    = "my-eks-cluster"
+  cluster_version = "1.30"
+
+  cluster_endpoint_public_access = true
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+
+  eks_managed_node_groups = {
+    nodes = {
+      min_size     = 1
+      max_size     = 3
+      desired_size = 2
+
+      instance_type = ["t2.small"]
+    }
+  }
+
+  tags = {
+    Environment = "dev"
+    Terraform   = "true"
+  }
 }
