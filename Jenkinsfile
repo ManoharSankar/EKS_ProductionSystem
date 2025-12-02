@@ -1,26 +1,23 @@
-// Define a Docker image that includes Terraform
-def TERRAFORM_IMAGE = 'hashicorp/terraform:latest'
-
 pipeline {
-    agent {
-        docker {
-            image TERRAFORM_IMAGE
-            args '-u root'
-        }
-    }
+    // 1. Define the agent
+    // Use 'agent any' to run on any available node, 
+    // or use a specific label if you have dedicated build nodes:
+    // agent { label 'my-terraform-agent' } 
+    agent any
 
-    // Set environment variables used by the 'variables.tf' defaults
+    // 2. Environment Setup
     environment {
-        // Assume 'AWS_CREDENTIALS' is a Jenkins Secret Text credential 
-        // storing AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
-        TF_VAR_aws_region = 'ap-south-1' 
+        // Assume 'AWS_CREDENTIALS' is a Jenkins Secret Text credential storing 
+        // AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
+        TF_VAR_aws_region         = 'ap-south-1' 
         TF_VAR_kubernetes_version = '1.30' // Passed directly to main.tf
     }
 
     stages {
         stage('Initialize Terraform') {
             steps {
-                // Authenticate and initialize
+                // The withCredentials block injects AWS environment variables 
+                // into the shell session for authentication.
                 withCredentials([aws(credentialsId: 'AWS_Credentials', variablePrefix: 'AWS_')]) {
                     sh 'terraform init -upgrade'
                 }
@@ -29,6 +26,7 @@ pipeline {
 
         stage('Validate & Format') {
             steps {
+                // These commands rely on the 'terraform' binary being in the PATH of the agent.
                 sh 'terraform fmt -check'
                 sh 'terraform validate'
             }
@@ -41,6 +39,7 @@ pipeline {
                     sh 'terraform plan -out=tfplan -lock=true'
                 }
                 
+                // Archive the plan file for verification
                 archiveArtifacts artifacts: 'tfplan', fingerprint: true
             }
         }
@@ -48,7 +47,7 @@ pipeline {
         stage('Manual Approval for Apply') {
             steps {
                 script {
-                    // Extract changes summary for better review
+                    // Extract changes summary for better review (requires 'jq' on the agent)
                     def plan_summary = sh(
                         script: 'terraform show -json tfplan | jq -r \'[.resource_changes[] | select(.change.actions!=["no-op"]) | {type:.type, actions:.change.actions}]\'',
                         returnStdout: true,
@@ -78,7 +77,7 @@ pipeline {
     
     post {
         always {
-            // Clean up temporary files regardless of build success
+            // Clean up temporary files
             sh 'rm -rf .terraform/ .terraform.lock.hcl tfplan'
         }
     }
