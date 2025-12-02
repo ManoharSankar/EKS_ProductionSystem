@@ -1,38 +1,53 @@
-module "eks" {
-  source  = "terraform-aws-modules/eks/aws"
-  version = "20.30.0"
+resource "aws_eks_cluster" "this" {
+  name     = "simple-eks-public"
+  version  = "1.31"                # the k8s control plane version you requested
+  role_arn = aws_iam_role.eks_cluster.arn
 
-  cluster_name    = var.cluster_name
-  cluster_version = "1.30"
-
-  vpc_id     = module.vpc.vpc_id
-  subnet_ids = module.vpc.private_subnets
-
-  enable_irsa = true
-
-  tags = {
-    Project = var.cluster_name
+  vpc_config {
+    subnet_ids         = aws_subnet.public[*].id
+    endpoint_public_access = true
+    endpoint_private_access = false
+    public_access_cidrs = ["0.0.0.0/0"]
   }
+
+  # minimal logging (optional)
+  enabled_cluster_log_types = ["api", "audit"]
 }
 
-module "eks_managed_node_group" {
-  source  = "terraform-aws-modules/eks/aws//modules/eks-managed-node-group"
-  version = "20.30.0"
+# Wait for cluster to become active
+data "aws_eks_cluster" "this" {
+  name = aws_eks_cluster.this.name
+  depends_on = [aws_eks_cluster.this]
+}
 
-  cluster_name    = module.eks.cluster_name
-  cluster_version = module.eks.cluster_version
-  subnet_ids      = module.vpc.private_subnets
+data "aws_eks_cluster_auth" "this" {
+  name = aws_eks_cluster.this.name
+}
 
-  name = "managed-ng"
-
-  instance_types = ["t2.medium"]
-
-  desired_size = 2
-  min_size     = 1
-  max_size     = 3
-
-  tags = {
-    Name    = "managed-ng"
-    Project = var.cluster_name
+# Node group (managed)
+resource "aws_eks_node_group" "default" {
+  cluster_name    = aws_eks_cluster.this.name
+  node_group_name = "ng-public-1"
+  node_role_arn   = aws_iam_role.eks_node.arn
+  subnet_ids      = aws_subnet.public[*].id
+  scaling_config {
+    desired_size = 2
+    max_size     = 3
+    min_size     = 1
   }
+
+  instance_types = ["t3.medium"]
+
+  # Use bottlerocket or amazon-linux-2 AMI type if needed:
+  # ami_type = "AL2_x86_64"
+  remote_access {
+    # optional: configure SSH access via key pair if you want to access nodes
+    # ec2_ssh_key = "your-keypair-name"
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
+    aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
+    aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly
+  ]
 }

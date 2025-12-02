@@ -2,30 +2,25 @@ pipeline {
     agent any
 
     environment {
-        TF_VERSION = "1.9.5"
         AWS_REGION = "ap-south-1"
+        AWS_CREDS  = credentials('aws-jenkins-creds')
     }
 
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                git 'https://github.com/ManoharSankar/EKS_ProductionSystem.git'
             }
         }
 
         stage('Terraform Init') {
             steps {
                 sh '''
-                    terraform --version
-                    terraform init -input=false
-                '''
-            }
-        }
+                    export AWS_ACCESS_KEY_ID=${AWS_CREDS_USR}
+                    export AWS_SECRET_ACCESS_KEY=${AWS_CREDS_PSW}
+                    export AWS_DEFAULT_REGION=${AWS_REGION}
 
-        stage('Terraform Validate') {
-            steps {
-                sh '''
-                    terraform validate
+                    terraform init
                 '''
             }
         }
@@ -33,51 +28,17 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 sh '''
-                    terraform plan -out=tfplan -input=false
+                    terraform plan -out plan.out
                 '''
-            }
-        }
-
-        stage('Approve Apply') {
-            when {
-                branch 'main'
-            }
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    input message: "Apply Terraform changes?"
-                }
             }
         }
 
         stage('Terraform Apply') {
-            when {
-                branch 'main'
-            }
             steps {
                 sh '''
-                    terraform apply -input=false -auto-approve tfplan
+                    terraform apply -auto-approve plan.out
                 '''
             }
-        }
-
-        stage('Terraform Output') {
-            steps {
-                sh '''
-                    terraform output
-                '''
-            }
-        }
-    }
-
-    post {
-        success {
-            echo "Terraform pipeline completed successfully!"
-        }
-        failure {
-            echo "Terraform pipeline FAILED!"
-        }
-        always {
-            cleanWs()
         }
     }
 }
