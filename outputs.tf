@@ -15,10 +15,10 @@ value       = module.eks.cluster_certificate_authority_data
 
 output "managed_node_group_name" {
 description = "EKS Managed Node Group Name"
-value = keys(module.eks.managed_node_groups)[0]
+value       = module.eks_managed_node_group.node_group_names[0]
 }
 
 output "managed_node_group_arn" {
 description = "EKS Managed Node Group ARN"
-value = values(module.eks.managed_node_groups)[0]
+value       = module.eks_managed_node_group.node_group_arns[0]
 }
