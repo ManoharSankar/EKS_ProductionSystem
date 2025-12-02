@@ -2,54 +2,82 @@ pipeline {
     agent any
 
     environment {
+        TF_VERSION = "1.9.5"
         AWS_REGION = "ap-south-1"
-        TF_VAR_region = "ap-south-1"  // if using variables
-        TF_WORKSPACE = "default"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/ManoharSankar/EKS_ProductionSystem.git'
+                checkout scm
             }
         }
 
         stage('Terraform Init') {
             steps {
-                sh 'terraform init -input=false'
+                sh '''
+                    terraform --version
+                    terraform init -input=false
+                '''
+            }
+        }
+
+        stage('Terraform Validate') {
+            steps {
+                sh '''
+                    terraform validate
+                '''
             }
         }
 
         stage('Terraform Plan') {
             steps {
-                sh 'terraform plan -out=tfplan -input=false'
+                sh '''
+                    terraform plan -out=tfplan -input=false
+                '''
+            }
+        }
+
+        stage('Approve Apply') {
+            when {
+                branch 'main'
+            }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    input message: "Apply Terraform changes?"
+                }
             }
         }
 
         stage('Terraform Apply') {
+            when {
+                branch 'main'
+            }
             steps {
-                input message: "Approve Terraform Apply?"
-                sh 'terraform apply -input=false tfplan'
+                sh '''
+                    terraform apply -input=false -auto-approve tfplan
+                '''
             }
         }
 
         stage('Terraform Output') {
             steps {
-                sh 'terraform output'
+                sh '''
+                    terraform output
+                '''
             }
         }
     }
 
     post {
-        always {
-            echo 'Cleaning up workspace'
-            cleanWs()
-        }
         success {
-            echo 'Terraform applied successfully!'
+            echo "Terraform pipeline completed successfully!"
         }
         failure {
-            echo 'Terraform failed!'
+            echo "Terraform pipeline FAILED!"
+        }
+        always {
+            cleanWs()
         }
     }
 }
