@@ -1,84 +1,55 @@
 pipeline {
-    // 1. Define the agent
-    // Use 'agent any' to run on any available node, 
-    // or use a specific label if you have dedicated build nodes:
-    // agent { label 'my-terraform-agent' } 
     agent any
 
-    // 2. Environment Setup
     environment {
-        // Assume 'AWS_CREDENTIALS' is a Jenkins Secret Text credential storing 
-        // AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
-        TF_VAR_aws_region         = 'ap-south-1' 
-        TF_VAR_kubernetes_version = '1.30' // Passed directly to main.tf
+        AWS_REGION = "ap-south-1"
+        TF_VAR_region = "ap-south-1"  // if using variables
+        TF_WORKSPACE = "default"
     }
 
     stages {
-        stage('Initialize Terraform') {
+        stage('Checkout') {
             steps {
-                // The withCredentials block injects AWS environment variables 
-                // into the shell session for authentication.
-                withCredentials([aws(credentialsId: 'AWS_Credentials', variablePrefix: 'AWS_')]) {
-                    sh 'terraform init -upgrade'
-                }
+                git branch: 'main', url: 'https://github.com/ManoharSankar/EKS_ProductionSystem.git'
             }
         }
 
-        stage('Validate & Format') {
+        stage('Terraform Init') {
             steps {
-                // These commands rely on the 'terraform' binary being in the PATH of the agent.
-                sh 'terraform fmt -check'
-                sh 'terraform validate'
+                sh 'terraform init -input=false'
             }
         }
 
-        stage('Plan Terraform Changes') {
+        stage('Terraform Plan') {
             steps {
-                // Create execution plan
-                withCredentials([aws(credentialsId: 'AWS_Credentials', variablePrefix: 'AWS_')]) {
-                    sh 'terraform plan -out=tfplan -lock=true'
-                }
-                
-                // Archive the plan file for verification
-                archiveArtifacts artifacts: 'tfplan', fingerprint: true
+                sh 'terraform plan -out=tfplan -input=false'
             }
         }
 
-        stage('Manual Approval for Apply') {
+        stage('Terraform Apply') {
             steps {
-                script {
-                    // Extract changes summary for better review (requires 'jq' on the agent)
-                    def plan_summary = sh(
-                        script: 'terraform show -json tfplan | jq -r \'[.resource_changes[] | select(.change.actions!=["no-op"]) | {type:.type, actions:.change.actions}]\'',
-                        returnStdout: true,
-                        returnStatus: true
-                    ).trim()
-
-                    input {
-                        message 'Proceed with Terraform Apply? Review the plan summary below.'
-                        ok 'Deploy Infrastructure'
-                        parameters {
-                            string(name: 'PLAN_SUMMARY', defaultValue: plan_summary, description: 'Summary of proposed changes.')
-                        }
-                    }
-                }
+                input message: "Approve Terraform Apply?"
+                sh 'terraform apply -input=false tfplan'
             }
         }
 
-        stage('Apply Terraform Changes') {
+        stage('Terraform Output') {
             steps {
-                // Apply the previously generated plan file
-                withCredentials([aws(credentialsId: 'AWS_Credentials', variablePrefix: 'AWS_')]) {
-                    sh 'terraform apply -auto-approve tfplan'
-                }
+                sh 'terraform output'
             }
         }
     }
-    
+
     post {
         always {
-            // Clean up temporary files
-            sh 'rm -rf .terraform/ .terraform.lock.hcl tfplan'
+            echo 'Cleaning up workspace'
+            cleanWs()
+        }
+        success {
+            echo 'Terraform applied successfully!'
+        }
+        failure {
+            echo 'Terraform failed!'
         }
     }
 }
