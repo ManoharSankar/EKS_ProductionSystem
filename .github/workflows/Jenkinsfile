@@ -1,40 +1,103 @@
 pipeline {
     agent any
-    
-    // Define environment variables, especially for AWS credentials
+
     environment {
-        // You should configure these as Jenkins secret credentials
-        AWS_ACCESS_KEY_ID = credentials('AWS_ACCESS_KEY_ID') 
-        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
-        
+        AWS_DEFAULT_REGION = "ap-south-1"
+        TF_WORKSPACE       = "default"
+    }
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
+    parameters {
+        choice(
+            name: 'ACTION',
+            choices: ['plan', 'apply', 'destroy'],
+            description: 'Terraform action to perform'
+        )
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
-                // Assuming your Terraform code is in a Git repository
-                git url: 'https://github.com/ManoharSankar/EKS_ProductionSystem.git', branch: 'main' 
+                checkout scm
             }
         }
-        
+
         stage('Terraform Init') {
             steps {
-                sh "terraform init"
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                                  credentialsId: 'aws-credentials']]) {
+                    sh """
+                        terraform init -input=false
+                    """
+                }
             }
         }
 
         stage('Terraform Plan') {
             steps {
-                // Run plan and save the output to a file
-                sh "terraform plan -out=tfplan"
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                                  credentialsId: 'aws-credentials']]) {
+                    sh """
+                        terraform plan -out=tfplan
+                    """
+                }
             }
         }
-        
-        stage('Terraform Apply') {
-            steps {
-                // Execute the apply using the previously saved plan file
-                sh " terraform apply tfplan"
+
+        stage('Manual Approval for Apply or Destroy') {
+            when {
+                anyOf {
+                    expression { params.ACTION == 'apply' }
+                    expression { params.ACTION == 'destroy' }
+                }
             }
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    input message: "Approve to run: ${params.ACTION} ?"
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            when {
+                expression { params.ACTION == 'apply' }
+            }
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                                  credentialsId: 'aws-credentials']]) {
+                    sh """
+                        terraform apply -auto-approve tfplan
+                    """
+                }
+            }
+        }
+
+        stage('Terraform Destroy') {
+            when {
+                expression { params.ACTION == 'destroy' }
+            }
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
+                                  credentialsId: 'aws-credentials']]) {
+                    sh """
+                        terraform destroy -auto-approve
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Terraform execution completed successfully!"
+        }
+        failure {
+            echo "Pipeline failed. Check logs."
         }
     }
 }
