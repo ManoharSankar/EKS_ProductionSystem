@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         AWS_DEFAULT_REGION = "ap-south-1"
-        TF_WORKSPACE       = "default"
     }
 
     options {
@@ -15,22 +14,26 @@ pipeline {
         choice(
             name: 'ACTION',
             choices: ['plan', 'apply', 'destroy'],
-            description: 'Terraform action to perform'
+            description: 'Choose Terraform action'
         )
     }
 
     stages {
 
-        stage('Checkout Code') {
+        stage("Checkout") {
             steps {
                 checkout scm
             }
         }
 
-        stage('Terraform Init') {
+        stage("Terraform Init") {
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
-                                  credentialsId: 'aws-credentials']]) {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                ]) {
                     sh """
                         terraform init -input=false
                     """
@@ -38,18 +41,30 @@ pipeline {
             }
         }
 
-        stage('Terraform Plan') {
+        stage("Terraform Plan") {
+            when {
+                expression { params.ACTION == "plan" || params.ACTION == "apply" }
+            }
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
-                                  credentialsId: 'aws-credentials']]) {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                ]) {
                     sh """
                         terraform plan -out=tfplan
                     """
                 }
             }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'tfplan', fingerprint: true
+                }
+            }
         }
 
-        stage('Manual Approval for Apply or Destroy') {
+        stage("Approval Required") {
             when {
                 anyOf {
                     expression { params.ACTION == 'apply' }
@@ -57,19 +72,23 @@ pipeline {
                 }
             }
             steps {
-                timeout(time: 10, unit: 'MINUTES') {
-                    input message: "Approve to run: ${params.ACTION} ?"
+                timeout(time: 15, unit: 'MINUTES') {
+                    input message: "Approve to proceed with ${params.ACTION}?"
                 }
             }
         }
 
-        stage('Terraform Apply') {
+        stage("Terraform Apply") {
             when {
-                expression { params.ACTION == 'apply' }
+                expression { params.ACTION == "apply" }
             }
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
-                                  credentialsId: 'aws-credentials']]) {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                ]) {
                     sh """
                         terraform apply -auto-approve tfplan
                     """
@@ -77,13 +96,17 @@ pipeline {
             }
         }
 
-        stage('Terraform Destroy') {
+        stage("Terraform Destroy") {
             when {
-                expression { params.ACTION == 'destroy' }
+                expression { params.ACTION == "destroy" }
             }
             steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding',
-                                  credentialsId: 'aws-credentials']]) {
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-credentials',
+                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                ]) {
                     sh """
                         terraform destroy -auto-approve
                     """
@@ -94,7 +117,7 @@ pipeline {
 
     post {
         success {
-            echo "Terraform execution completed successfully!"
+            echo "Pipeline finished successfully."
         }
         failure {
             echo "Pipeline failed. Check logs."
