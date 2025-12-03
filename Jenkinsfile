@@ -34,9 +34,7 @@ pipeline {
                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
                 ]) {
-                    sh """
-                        terraform init -input=false
-                    """
+                    sh "terraform init -input=false"
                 }
             }
         }
@@ -52,28 +50,12 @@ pipeline {
                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
                 ]) {
-                    sh """
-                        terraform plan -out=tfplan
-                    """
+                    sh "terraform plan -out=tfplan"
                 }
             }
             post {
                 success {
                     archiveArtifacts artifacts: 'tfplan', fingerprint: true
-                }
-            }
-        }
-
-        stage("Approval Required") {
-            when {
-                anyOf {
-                    expression { params.ACTION == 'apply' }
-                    expression { params.ACTION == 'destroy' }
-                }
-            }
-            steps {
-                timeout(time: 15, unit: 'MINUTES') {
-                    input message: "Approve to proceed with ${params.ACTION}?"
                 }
             }
         }
@@ -89,9 +71,7 @@ pipeline {
                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
                 ]) {
-                    sh """
-                        terraform apply -auto-approve tfplan
-                    """
+                    sh "terraform apply -auto-approve tfplan"
                 }
             }
         }
@@ -107,9 +87,7 @@ pipeline {
                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
                 ]) {
-                    sh """
-                        terraform destroy -auto-approve
-                    """
+                    sh "terraform destroy -auto-approve"
                 }
             }
         }
@@ -117,7 +95,7 @@ pipeline {
 
     post {
         success {
-            echo "Pipeline finished successfully."
+            echo "Pipeline completed successfully!"
         }
         failure {
             echo "Pipeline failed. Check logs."
