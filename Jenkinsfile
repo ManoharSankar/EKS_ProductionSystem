@@ -61,20 +61,29 @@ pipeline {
         }
 
         stage("Terraform Apply") {
-            when {
-                expression { params.ACTION == "apply" }
-            }
-            steps {
-                withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding',
-                     credentialsId: 'aws-credentials',
-                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-                ]) {
-                    sh "terraform apply -auto-approve tfplan"
-                }
-            }
+    when {
+        expression { params.ACTION == "apply" }
+    }
+    steps {
+        withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+             credentialsId: 'aws-credentials',
+             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+        ]) {
+            sh """
+                terraform apply -auto-approve tfplan
+
+                # Update kubeconfig after EKS creation
+                aws eks update-kubeconfig --region ap-south-1 --name scania-eks
+
+                # Verify cluster connection
+                kubectl get nodes
+            """
         }
+    }
+}
+
 
         stage("Terraform Destroy") {
             when {
