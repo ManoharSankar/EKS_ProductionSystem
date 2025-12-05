@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/k8s-at-home/echoserver:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: DATABASE_HOST
+          value: postgres
+        - name: DATABASE_USER
+          value: user
+        - name: DATABASE_PASSWORD
+          value: password
+        - name: DATABASE_NAME
+          value: mydb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+  selector:
+    app: backend
